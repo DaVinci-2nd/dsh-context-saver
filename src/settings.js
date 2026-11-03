@@ -38,7 +38,9 @@ function boolean(value, fallback) {
 function turns(value, fallback) {
   const parsed = Math.trunc(Number(value))
   if (!Number.isFinite(parsed)) return fallback
-  return Math.min(MAX_TURNS, Math.max(0, parsed))
+  // At least one turn is always kept at each end: the last turn carries the
+  // current prompt, and the first keeps the request starting on a user message.
+  return Math.min(MAX_TURNS, Math.max(1, parsed))
 }
 
 /**

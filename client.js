@@ -8,6 +8,7 @@
 window.__ModuleLoader__.load({
   id: 'dsh-context-saver',
   factory(require) {
+    const module = { exports: {} }
     const React = require('react')
     const h = React.createElement
 
@@ -291,14 +292,14 @@ window.__ModuleLoader__.load({
           setDraft(String(value))
           return
         }
-        const clamped = Math.min(100, Math.max(0, parsed))
+        const clamped = Math.min(100, Math.max(1, parsed))
         setDraft(String(clamped))
         if (clamped !== value) onCommit(clamped)
       }
 
       return h('input', {
         type: 'number',
-        min: 0,
+        min: 1,
         max: 100,
         step: 1,
         value: draft,

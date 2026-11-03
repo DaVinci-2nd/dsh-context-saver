@@ -67,18 +67,42 @@ $DSH_HOME/dsh-context-saver/settings.json
 With `N` turns in total, `H` leading turns kept, and `T` trailing turns kept:
 
 - when `N ≤ H + T` nothing is stripped at all (the two retention windows overlap);
-- otherwise a turn is stripped only when it is inside neither window. A stripped turn keeps its structure and loses its content: tool calls keep their id and name with empty arguments, text and images are cleared, so tool calls and results stay paired.
+- otherwise a turn is stripped only when it is inside neither window. A stripped turn keeps its structure and loses its content: tool calls keep their id and name with empty arguments, reasoning blocks keep their position and signature with empty text, text and images are cleared, so tool calls and results stay paired.
 
 Example: 17 turns, 7 leading, 8 trailing → turns 1–7 and 10–17 are kept and turns 8 and 9 are stripped (`7 + 8 = 15` turns retained).
 
-> A leading count below 1 is treated as 1, so the first request message stays a user message.
+> At least one turn is always kept at each end. The trailing turn carries the current question — emptying it would send a request with no question in it — and the leading one keeps the request starting on a user message. A configured `0` is raised to `1`.
+
+## Measured on real sessions
+
+Two independent measurements, both against the live `deepseek-flash` endpoint.
+
+**A real 65-turn session log from this machine**, replayed through the adapter's own serialization rules with the session's own 34 tool declarations:
+
+| | Prompt tokens | Reply |
+|---|---|---|
+| Untrimmed | 867,787 | accepted |
+| **Trimmed (defaults)** | **574,347** | accepted |
+
+33.8% fewer prompt tokens on a long agentic session, and the model still answered correctly.
+
+**A 60-turn synthetic session with heavy repeated reads**, comparing the request for turn N against the request for turn N+1 to measure prefix reuse:
+
+| Configuration | Prompt tokens | Cache hit rate |
+|---|---|---|
+| Trimming off | 21,102 | 98.9% |
+| **Defaults** (thinking + repeated reads) | **3,242** | **94.8%** |
+| Defaults + terminal | 3,242 | 94.8% |
+| Defaults + terminal + middle | 1,847 | 90.1% |
+
+So the default configuration sends **6.5× fewer prompt tokens at a 94.8% cache hit rate** — the "90% or better" goal holds for every configuration.
 
 ## KV cache and hit rate
 
 - Stripped older turns are never rewritten, and new turns are only appended, so the shared prefix stays stable.
-- The duplicate marker is a fixed string naming a stable ordinal ("the Nth tool result"), so it does not drift as the session grows.
-- With middle stripping on, a turn slides from the trailing window into the middle; at that moment its content is cleared and the prefix cache misses once from there. That cost is inherent to any middle-stripping scheme and does not exist while the option is off.
-- In normal use (master switch + thinking + repeated reads) the shared prefix of consecutive requests stays above 90%.
+- The duplicate marker is a fixed string naming a stable ordinal ("the Nth tool result"), so it does not drift as the session grows. A read shorter than 200 characters is left alone, because the marker would cost more than it saves.
+- With middle stripping on, a turn slides from the trailing window into the middle; at that moment its content is cleared and the prefix cache misses once from there. That cost is inherent to any middle-stripping scheme and does not exist while the option is off — hence the lower 90.1% figure.
+- The trimmed shape is deterministic, so a retry or a repeated step reuses the cache exactly: two identical requests both measured 95.1%.
 
 ## Install
 

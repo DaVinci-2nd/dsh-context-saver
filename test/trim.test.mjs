@@ -84,6 +84,17 @@ test('middle stripping keeps tool calls and results paired', () => {
   assert.deepEqual(resultMessage.content, [])
 })
 
+test('a zero window is raised to one turn so the request keeps its question', () => {
+  const messages = conversation(12)
+
+  const noTail = stripMiddleTurns(messages, 3, 0)
+  const lastAssistant = noTail[noTail.length - 1]
+  assert.deepEqual(lastAssistant.content, [text('answer 12')], 'the newest turn is never emptied')
+
+  const noHead = stripMiddleTurns(messages, 0, 3)
+  assert.deepEqual(noHead[0].content, [text('question 1')], 'the first turn is never emptied')
+})
+
 test('system and developer messages are never emptied', () => {
   const messages = conversation(12)
   messages.splice(5, 0, {
@@ -140,6 +151,19 @@ test('different reads and non-read tools are left alone', () => {
     user('read other'),
     assistant([call('call_3', 'read', '{"path":"b.txt"}')]),
     result('call_3', 'other'),
+  ]
+
+  assert.equal(dedupeRepeatedReads(messages), messages)
+})
+
+test('a read too short to be worth replacing keeps its content', () => {
+  const messages = [
+    user('read'),
+    assistant([call('call_1', 'read', '{"path":"a.txt"}')]),
+    result('call_1', 'tiny'),
+    user('read again'),
+    assistant([call('call_2', 'read', '{"path":"a.txt"}')]),
+    result('call_2', 'tiny'),
   ]
 
   assert.equal(dedupeRepeatedReads(messages), messages)

@@ -42,6 +42,9 @@ function duplicateMarker(ordinal) {
   return `[重复内容已省略：与第 ${ordinal} 条工具结果完全一致 / duplicate content omitted]`
 }
 
+/** Lower bound on the body a read must have before a repeat is worth collapsing. */
+const MIN_DEDUPE_CHARS = 200
+
 function isBlock(value) {
   return value !== null && typeof value === 'object'
 }
@@ -114,6 +117,9 @@ export function stripReasoningText(messages) {
  * full content; every later occurrence keeps its role, call id, and position
  * but carries only a marker naming the retained one.
  *
+ * A read shorter than {@link MIN_DEDUPE_CHARS} is left alone: replacing it with
+ * the marker would cost more than it saves.
+ *
  * @param {readonly any[]} messages
  * @returns {readonly any[]}
  */
@@ -129,7 +135,7 @@ export function dedupeRepeatedReads(messages) {
     const name = names.get(message.toolCallId)
     if (name === undefined || !READ_TOOLS.has(name)) return message
     const text = textOf(message.content)
-    if (text === undefined || text.length === 0) return message
+    if (text === undefined || text.length < MIN_DEDUPE_CHARS) return message
     const first = retained.get(text)
     if (first === undefined) {
       retained.set(text, ordinal)
@@ -167,9 +173,12 @@ export function stripTerminalInputs(messages) {
 }
 
 /**
- * Empty one message while keeping the structure the wire protocol needs: tool
- * calls survive with empty arguments, everything textual, binary, or decorative
- * is removed.
+ * Empty one message while keeping every structure the wire protocol depends on.
+ *
+ * Tool calls survive with empty arguments so their results still match, and
+ * reasoning blocks survive with empty text so the count still matches the stored
+ * replay metadata — a mismatch makes the adapter discard the native signatures
+ * with a warning on every later request.
  *
  * @param {any} message
  * @returns {any}
@@ -178,8 +187,9 @@ function emptyMessage(message) {
   const content = []
   if (Array.isArray(message.content)) {
     for (const block of message.content) {
-      if (!isBlock(block) || block.type !== 'tool-call') continue
-      content.push({ ...block, arguments: '{}' })
+      if (!isBlock(block)) continue
+      if (block.type === 'tool-call') content.push({ ...block, arguments: '{}' })
+      else if (block.type === 'reasoning') content.push({ ...block, text: '' })
     }
   }
   return { ...message, content }
@@ -193,6 +203,10 @@ function emptyMessage(message) {
  * structure rather than turn content and are never emptied. A conversation that
  * fits inside both windows is left completely alone.
  *
+ * At least one turn is always kept at each end. The trailing turn carries the
+ * current prompt: emptying it would send a request with no question in it, so a
+ * configured `0` is raised to `1` rather than honoured.
+ *
  * @param {readonly any[]} messages
  * @param {number} keepHead leading turns to keep
  * @param {number} keepTail trailing turns to keep
@@ -205,10 +219,10 @@ export function stripMiddleTurns(messages, keepHead, keepTail) {
   }
   const count = starts.length
   const head = Math.min(MAX_TURNS, Math.max(1, Math.trunc(Number(keepHead)) || 0))
-  const tail = Math.min(MAX_TURNS, Math.max(0, Math.trunc(Number(keepTail)) || 0))
+  const tail = Math.min(MAX_TURNS, Math.max(1, Math.trunc(Number(keepTail)) || 0))
   if (count <= head + tail) return messages
   const from = starts[head]
-  const to = tail === 0 ? messages.length : starts[count - tail]
+  const to = starts[count - tail]
   if (!(from < to)) return messages
   const next = messages.slice()
   for (let index = from; index < to; index += 1) {
