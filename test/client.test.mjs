@@ -37,9 +37,23 @@ globalThis.fetch = async (url, init) => {
 // fetch() resolves asynchronously; the panel reads once on mount, so run those
 // microtasks before asserting anything about enabled controls.
 const settle = () => new Promise((resolve) => setImmediate(resolve))
+// Capture the document listeners the panel installs while it is open, so the
+// outside-click behaviour can be exercised the way the browser dispatches it.
+const listeners = new Map()
 globalThis.document = {
-  addEventListener() {},
-  removeEventListener() {},
+  addEventListener(name, listener) {
+    if (!listeners.has(name)) listeners.set(name, [])
+    listeners.get(name).push(listener)
+  },
+  removeEventListener(name, listener) {
+    const list = listeners.get(name)
+    if (!list) return
+    const at = list.indexOf(listener)
+    if (at !== -1) list.splice(at, 1)
+  },
+}
+const fire = (name, event) => {
+  for (const listener of [...(listeners.get(name) ?? [])]) listener(event)
 }
 
 const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
@@ -50,9 +64,10 @@ assert.ok(captured !== undefined, 'client.js must register through window.__Modu
 assert.equal(captured.id, 'dsh-context-saver')
 
 // A React stand-in: elements are plain objects, hooks keep persistent cells.
-// Effects run once per cell lifetime, which is what a mounted component does.
+// useState keeps a value per hook position; useEffect runs when its dependency
+// list changes, cleaning up the previous run — which is what makes an effect
+// guarded by `if (!open) return` install its listeners once the panel opens.
 const cells = []
-const effectsRan = new Set()
 let cursor = 0
 const React = {
   createElement: (type, props, ...children) => ({
@@ -61,23 +76,29 @@ const React = {
     children,
   }),
   useRef: (value) => {
-    const cell = cells[cursor] ?? (cells[cursor] = { current: value })
+    const cell = cells[cursor] ?? (cells[cursor] = { kind: 'ref', current: value })
     cursor += 1
     return cell
   },
   useState: (value) => {
-    const cell = cells[cursor] ?? (cells[cursor] = { value })
+    const cell = cells[cursor] ?? (cells[cursor] = { kind: 'state', value })
     cursor += 1
     return [cell.value, (next) => {
       cell.value = typeof next === 'function' ? next(cell.value) : next
     }]
   },
-  useEffect: (effect) => {
+  useEffect: (effect, deps) => {
     const at = cursor
     cursor += 1
-    if (effectsRan.has(at)) return
-    effectsRan.add(at)
-    effect()
+    const cell = cells[at] ?? (cells[at] = { kind: 'effect', deps: undefined, cleanup: undefined, ran: false })
+    const same = cell.ran && deps !== undefined && cell.deps !== undefined
+      && deps.length === cell.deps.length
+      && deps.every((value, index) => Object.is(value, cell.deps[index]))
+    if (same) return
+    if (typeof cell.cleanup === 'function') cell.cleanup()
+    cell.ran = true
+    cell.deps = deps === undefined ? undefined : [...deps]
+    cell.cleanup = effect()
   },
 }
 
@@ -140,7 +161,28 @@ function render(element) {
     const rendered = type({ ...props, children })
     return render(rendered)
   }
-  return { type, props, children: children.map(render) }
+  // Attach a hook ref the way React assigns it after mount, so contains() can
+  // be exercised against a real element object.
+  const node = { type, props, children: children.map(render) }
+  Object.defineProperty(node, 'contains', {
+    value(candidate) {
+      if (candidate === node) return true
+      const walk = (current) => {
+        if (Array.isArray(current)) return current.some(walk)
+        if (current === null || typeof current !== 'object') return false
+        if (current === candidate) return true
+        return (current.children ?? []).some(walk)
+      }
+      return walk(node.children ?? [])
+    },
+  })
+  // The panel positions itself from this rectangle; a fixed box is enough.
+  Object.defineProperty(node, 'getBoundingClientRect', {
+    value: () => ({ left: 120, top: 600, right: 200, bottom: 628, width: 80, height: 28 }),
+  })
+  const ref = props?.ref
+  if (ref !== null && typeof ref === 'object' && 'current' in ref) ref.current = node
+  return node
 }
 
 const collect = (node, visit) => {
@@ -234,6 +276,26 @@ const middle = (() => {
 })()
 assert.equal(middle.props['aria-checked'], 'false', 'middle stripping defaults to off')
 
+// Every switch must paint a track that is visible against the panel in both
+// themes. The theme's brand and border aliases cannot be used: in the dark theme
+// brand-primary resolves to a near-white bluish-50 and border-l2 to transparent
+// white, so a white knob on either is invisible. Assert a real, opaque colour.
+const switchTracks = []
+collect(tree, (item) => {
+  if (item.props?.role !== 'switch') return
+  switchTracks.push(item)
+})
+assert.ok(switchTracks.length > 0)
+for (const track of switchTracks) {
+  const background = track.props.style.background
+  assert.match(background, /^#[0-9a-fA-F]{6}$/, `switch "${track.props['aria-label']}" must use an opaque colour, got ${background}`)
+  assert.notEqual(background.toLowerCase(), '#ffffff', 'a white track makes the knob invisible')
+}
+const onTrack = switchTracks.find((track) => track.props['aria-checked'] === 'true')
+const offTrack = switchTracks.find((track) => track.props['aria-checked'] === 'false')
+assert.ok(onTrack !== undefined && offTrack !== undefined, 'both states must be on screen')
+assert.notEqual(onTrack.props.style.background, offTrack.props.style.background, 'on and off must be distinguishable')
+
 // Turning middle stripping on must ask first, and the dialog must carry the
 // exact warning sentence the request quotes.
 middle.props.onClick()
@@ -254,7 +316,51 @@ collect(dialog, (item) => {
   for (const child of item.children ?? []) if (typeof child === 'string') dialogText += child
 })
 assert.ok(dialogText.includes('T:warningBody'))
-assert.match(locales.length > 0 ? '' : '', /^$/)
+
+// Regression: the dialog renders outside the panel, so the document's
+// outside-click handler must exempt it. Without that exemption the mousedown
+// preceding a click on either button closed the panel and the dialog together,
+// and the button's own onClick never ran — the reported bug.
+const dialogNode = (() => {
+  let found = null
+  collect(tree, (item) => {
+    if (found === null && item.props?.role === 'alertdialog') found = item
+  })
+  return found
+})()
+assert.ok(dialogNode !== null)
+
+// Find the confirm button: the last button inside the dialog's action row.
+const buttons = []
+collect(dialogNode, (item) => {
+  if (item.type === 'button') buttons.push(item)
+})
+const confirm = buttons[buttons.length - 1]
+assert.ok(confirm !== undefined)
+
+// Simulate the browser: mousedown on the dialog's own button, then its click.
+// The pointerdown must be recognised as inside the dialog, so the panel survives.
+const panelWasOpen = triggerOf(tree).props['aria-expanded']
+fire('mousedown', { target: dialogNode, currentTarget: dialogNode })
+tree = paint()
+assert.equal(panelWasOpen, 'true')
+assert.ok(
+  count(tree, (item) => item.props?.role === 'alertdialog') === 1,
+  'a mousedown inside the dialog must not dismiss it',
+)
+
+// The click itself still works and writes the setting.
+const before = posts.length
+confirm.props.onClick()
+tree = paint()
+assert.equal(posts.length, before + 1, 'confirming must write the setting')
+assert.equal(posts[posts.length - 1].patch.stripMiddle, true)
+assert.equal(count(tree, (item) => item.props?.role === 'alertdialog'), 0, 'the dialog closes after confirming')
+
+// An outside click still closes everything, which is the behaviour it must keep.
+fire('mousedown', { target: { outside: true }, currentTarget: null })
+tree = paint()
+assert.equal(triggerOf(tree).props['aria-expanded'], 'false', 'an outside click still closes the panel')
 
 console.log(JSON.stringify({
   ok: true,
@@ -263,4 +369,5 @@ console.log(JSON.stringify({
   switches: checkedCount,
   slot: registration.options.name,
   warning: 'alertdialog',
+  dialogSurvivesInsideClick: true,
 }))

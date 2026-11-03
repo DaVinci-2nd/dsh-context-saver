@@ -233,6 +233,15 @@ window.__ModuleLoader__.load({
       cursor: 'pointer',
     }
 
+    // The switch needs a track that stays visible in both themes. The brand and
+    // border aliases cannot provide one: in the dark theme brand-primary resolves
+    // to a near-white bluish-50 and border-l2 to transparent white, so a white
+    // knob would sit on a near-white track. These two are mid-tone, so the knob
+    // and the track keep their contrast on a light and on a dark panel.
+    const SWITCH_ON = '#22c55e'
+    const SWITCH_OFF = '#9aa0a6'
+    const SWITCH_KNOB = '#ffffff'
+
     function Switcher(props) {
       const checked = props.checked === true
       const disabled = props.disabled === true
@@ -256,7 +265,7 @@ window.__ModuleLoader__.load({
           borderRadius: '9px',
           cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.45 : 1,
-          background: checked ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-border-l2)',
+          background: checked ? SWITCH_ON : SWITCH_OFF,
           transition: 'background 120ms ease',
         },
       }, h('span', {
@@ -268,7 +277,8 @@ window.__ModuleLoader__.load({
           width: '14px',
           height: '14px',
           borderRadius: '50%',
-          background: '#FFFFFF',
+          background: SWITCH_KNOB,
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
           transition: 'left 120ms ease',
         },
       }))
@@ -368,6 +378,7 @@ window.__ModuleLoader__.load({
       const setHover = hoverState[1]
       const triggerRef = React.useRef(null)
       const panelRef = React.useRef(null)
+      const dialogRef = React.useRef(null)
       const aliveRef = React.useRef(true)
       const busyRef = React.useRef(false)
 
@@ -423,13 +434,17 @@ window.__ModuleLoader__.load({
         const onPointerDown = (event) => {
           if (panelRef.current !== null && panelRef.current.contains(event.target)) return
           if (triggerRef.current !== null && triggerRef.current.contains(event.target)) return
+          // The warning dialog renders outside the panel, so without this the
+          // mousedown that precedes a click on its buttons would close the panel
+          // and the dialog together, and the button would never fire.
+          if (dialogRef.current !== null && dialogRef.current.contains(event.target)) return
           setOpen(false)
           setConfirming(false)
         }
         const onKeyDown = (event) => {
           if (event.key !== 'Escape') return
-          setOpen(false)
           setConfirming(false)
+          setOpen(false)
         }
         document.addEventListener('mousedown', onPointerDown, true)
         document.addEventListener('keydown', onKeyDown, true)
@@ -566,6 +581,7 @@ window.__ModuleLoader__.load({
       h('div', { style: FOOTER }, t('footer')))
 
       const dialog = !confirming ? null : h('div', {
+        ref: dialogRef,
         style: OVERLAY,
         onMouseDown: (event) => {
           if (event.target === event.currentTarget) setConfirming(false)

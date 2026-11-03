@@ -60,6 +60,8 @@ The panel is localized in Chinese and English and follows the DSH language setti
 $DSH_HOME/dsh-context-saver/settings.json
 ```
 
+The switch track uses a fixed mid-green (on, `#22c55e`) and neutral grey (off, `#9aa0a6`) rather than the theme's `brand-primary` / `border-l2`: in the dark theme those two aliases resolve to a near-white `#f9fafb` and a translucent white, so a white knob on them shows no visible state.
+
 ## Middle stripping rule
 
 **One turn is one user message plus the model output that follows it**, so turn boundaries are the `user` messages.
