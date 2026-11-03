@@ -1,0 +1,59 @@
+{
+  "name": "dsh-context-saver",
+  "version": "0.1.0",
+  "description": "Trims reasoning, duplicate reads, terminal inputs, and middle turns from the request a DSH agent sends to the model, while the local session keeps the full log.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "src",
+    "cordis.patch.yml",
+    "dsh.plugin.json",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "context",
+    "token-saving",
+    "kv-cache"
+  ],
+  "author": "DaVinci-2nd",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaVinci-2nd/dsh-context-saver.git"
+  },
+  "homepage": "https://github.com/DaVinci-2nd/dsh-context-saver#readme",
+  "bugs": {
+    "url": "https://github.com/DaVinci-2nd/dsh-context-saver/issues"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
+}

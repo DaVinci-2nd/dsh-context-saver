@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Context Saver",
+    "description": "Trims thinking content, repeated reads, terminal inputs, and middle turns from the request sent to the model, while the local session keeps the complete log."
+  }
+}
