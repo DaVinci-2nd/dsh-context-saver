@@ -25,6 +25,7 @@
   ],
   "keywords": [
     "dsh",
+    "dsh-plugin",
     "deepseek-harness",
     "cordis",
     "context",
@@ -33,6 +34,9 @@
   ],
   "author": "DaVinci-2nd",
   "license": "MIT",
+  "engines": {
+    "dsh": ">=0.2.0-0 <0.3.0-0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DaVinci-2nd/dsh-context-saver.git"
