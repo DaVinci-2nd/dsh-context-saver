@@ -108,11 +108,21 @@ So the default configuration sends **6.5× fewer prompt tokens at a 94.8% cache 
 
 ## Install
 
-### As a DSH plugin
+### From GitHub
 
-Install this directory from DSH — `install_bundle` of `plugin_manager` with the repository directory as the target — or choose the directory in the plugin manager UI.
+```sh
+dsh plugin add github:DaVinci-2nd/dsh-context-saver
+```
 
-The installed row is named `dsh-context-saver`:
+Pin a commit for a reproducible install: `dsh plugin add github:DaVinci-2nd/dsh-context-saver#<sha>`.
+
+The package is plain JavaScript with no build step and no `prepare` script, so a git install needs **no `allowBuilds` permission**.
+
+### From a local checkout
+
+Choose the directory in the plugin manager, or point `install_bundle` at it.
+
+### The installed row
 
 ```yaml
 - insert:

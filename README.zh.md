@@ -108,11 +108,21 @@ $DSH_HOME/dsh-context-saver/settings.json
 
 ## 安装
 
-### 作为 DSH 插件安装
+### 从 GitHub 安装
 
-在 DSH 中让 Agent 安装本目录（`plugin_manager` 的 `install_bundle`，目标指向本仓库目录），或在插件管理界面选择本目录。
+```sh
+dsh plugin add github:DaVinci-2nd/dsh-context-saver
+```
 
-安装后插件行名称为 `dsh-context-saver`，补丁内容：
+要固定版本可钉住 commit：`dsh plugin add github:DaVinci-2nd/dsh-context-saver#<sha>`。
+
+本插件是纯 JavaScript，没有构建步骤、没有 `prepare` 脚本，所以 git 安装**不需要任何 `allowBuilds` 放行**。
+
+### 从本地目录安装
+
+在插件管理界面选择该目录，或让 `install_bundle` 指向它。
+
+### 安装后的插件行
 
 ```yaml
 - insert:
